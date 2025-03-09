@@ -2,56 +2,51 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
+	"io"
+	"log/slog"
+	"net/http"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/jackrosenthal/nextride-go/api"
+	"github.com/jamespfennell/gtfs"
 )
 
 type RouteListCmd struct {
 	SortBy string `option:"" name:"sort" help:"Sort by field" default:"Type"`
-	Mode   string `option:"" name:"mode" help:"Filter by mode (bus or rail)" default:"" enum:"bus,rail,"`
-	Region string `option:"" name:"region" help:"Filter by region" default:"" enum:"denver,boulder,longmont,airport,"`
-}
-
-func routeRegionFromString(region string) api.RouteRegion {
-	switch region {
-	case "denver":
-		return api.DenverRegion
-	case "boulder":
-		return api.BoulderRegion
-	case "longmont":
-		return api.LongmontRegion
-	case "airport":
-		return api.AirportRegion
-	}
-	return 0
 }
 
 func (c *RouteListCmd) Run(context *CliContext) error {
-	runboard, err := context.Client.GetCurrentRunboard()
+	resp, err := http.Get("https://www.rtd-denver.com/files/gtfs/google_transit.zip")
 	if err != nil {
+		slog.Error("Failed to get GTFS data", slog.Any("err", err))
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("Failed to read response body", slog.Any("err", err))
+		return err
+	}
+
+	gtfsData, err := gtfs.ParseStatic(respBody, gtfs.ParseStaticOptions{})
+	if err != nil {
+		slog.Error("Failed to parse GTFS data", slog.Any("err", err))
 		return err
 	}
 
 	rows := [][]string{}
-	for _, route := range runboard.Routes {
-		if c.Mode != "" && c.Mode != strings.ToLower(route.RouteType.String()) {
-			continue
-		}
-		if c.Region != "" && !route.IsInRegion(routeRegionFromString(c.Region)) {
-			continue
-		}
+	for _, route := range gtfsData.Routes {
 		rows = append(rows, []string{
 			route.Id,
-			route.RouteId,
-			route.RouteName,
-			route.RouteType.String(),
+			route.ShortName,
+			route.LongName,
+			route.Description,
+			route.Type.String(),
 		})
 	}
 
-	headers := []string{"Name", "ID", "Description", "Type"}
+	headers := []string{"ID", "Short Name", "Long Name", "Description", "Type"}
 	rows = sortRows(headers, rows, c.SortBy)
 	table := table.New().
 		Border(lipgloss.NormalBorder()).

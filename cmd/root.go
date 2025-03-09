@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"sort"
-
-	"github.com/jackrosenthal/nextride-go/api"
 )
 
 var CLI struct {
@@ -12,7 +10,6 @@ var CLI struct {
 }
 
 type CliContext struct {
-	Client *api.NextRideClient
 }
 
 func sortRows(headers []string, rows [][]string, sortBy string) [][]string {
